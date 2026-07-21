@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 480px; margin: 40px auto; color: #1a1a1a; }
+    h1 { font-size: 18px; margin-bottom: 4px; }
+    p.hint { color: #666; font-size: 13px; margin-top: 0; }
+    input[type="text"] { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; margin-bottom: 8px; }
+    select { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; margin-bottom: 12px; }
+    button { padding: 10px 16px; font-size: 14px; cursor: pointer; background: #1a73e8; color: #fff; border: none; border-radius: 4px; }
+    button:disabled { background: #999; cursor: default; }
+    #status { margin-top: 16px; font-size: 14px; }
+    #status a { color: #1a73e8; }
+    .error { color: #c5221f; }
+  </style>
+</head>
+<body>
+  <h1>Mall Shop Directory Downloader</h1>
+  <p class="hint">Search for a mall, select it, then run the download. Results are written to their own tab in this spreadsheet.</p>
+
+  <input type="text" id="search" placeholder="Search malls by name...">
+  <select id="mallSelect" size="6"></select>
+  <button id="runBtn" disabled>Download Shop Directory</button>
+
+  <div id="status"></div>
+
+  <script>
+    let allMalls = [];
+
+    function renderOptions(malls) {
+      const select = document.getElementById('mallSelect');
+      select.innerHTML = '';
+      malls.forEach(function (mall) {
+        const option = document.createElement('option');
+        option.value = mall.id;
+        option.textContent = mall.name;
+        select.appendChild(option);
+      });
+    }
+
+    document.getElementById('search').addEventListener('input', function (e) {
+      const term = e.target.value.toLowerCase();
+      renderOptions(allMalls.filter(function (m) { return m.name.toLowerCase().indexOf(term) !== -1; }));
+    });
+
+    document.getElementById('mallSelect').addEventListener('change', function () {
+      document.getElementById('runBtn').disabled = !this.value;
+    });
+
+    document.getElementById('runBtn').addEventListener('click', function () {
+      const select = document.getElementById('mallSelect');
+      const mallId = select.value;
+      const mallName = select.options[select.selectedIndex].textContent;
+      if (!mallId) return;
+
+      const btn = document.getElementById('runBtn');
+      const status = document.getElementById('status');
+      btn.disabled = true;
+      status.innerHTML = 'Running download for ' + mallName + '... this can take a minute.';
+
+      google.script.run
+        .withSuccessHandler(function (result) {
+          btn.disabled = false;
+          status.innerHTML = 'Done. ' + result.count + ' shops saved to tab "' + result.tabName +
+            '". <a href="' + result.sheetUrl + '" target="_blank">Open sheet</a>';
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          status.innerHTML = '<span class="error">Error: ' + err.message + '</span>';
+        })
+        .runScrapeForMall(mallId);
+    });
+
+    google.script.run
+      .withSuccessHandler(function (malls) {
+        allMalls = malls;
+        renderOptions(malls);
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('status').innerHTML = '<span class="error">Failed to load malls: ' + err.message + '</span>';
+      })
+      .getMalls();
+  </script>
+</body>
+</html>
