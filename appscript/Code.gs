@@ -7,17 +7,40 @@
  *
  * MallConfig columns (row 1 = header):
  *   MallId | MallName | Provider | SiteKey | Culture | SearchUrl | ApiPath | BaseUrl | Enabled
+ *   | QueryParams | PageParam | ItemsPath | TotalPagesPath | FieldMap
  *
- * "Provider" selects which fetch function below understands that site's API
- * shape. Today only "landsec" (the API documented in docs/bluewater-anatomy.md,
- * shared by Landsec-operated malls like Bluewater) is implemented.
+ * "Provider" picks how the row below is interpreted:
  *
- * "ApiPath" is the segment after SearchUrl, e.g. "shops" for the shop
- * directory or "eateries" for the eat/dine directory — same landsec provider,
- * same JSON shape, just a different content type. Leave blank to default to
- * "shops". One mall with both a shop and an eat directory gets two rows,
- * same SiteKey, different MallName/ApiPath (e.g. "Bluewater" + "Bluewater -
- * Eat & Drink").
+ *   - "landsec": preset for the Landsec API family (Bluewater, and any other
+ *     Landsec mall/directory) — just fill SiteKey/SearchUrl/ApiPath/BaseUrl.
+ *
+ *   - "generic": works for ANY paginated JSON API, purely from config, with
+ *     no code change — see the "generic" columns below. Use this for a new
+ *     site whose API isn't Landsec's, as long as it's a JSON GET endpoint
+ *     that takes a page number and reports how many pages exist.
+ *
+ * Only a site that *isn't* a plain paginated JSON API (needs a login, is
+ * server-rendered HTML with no API, uses GraphQL, etc.) requires touching
+ * Code.gs at all — add a new fetchShops_<provider>_() function for that case.
+ *
+ * Generic-provider columns (leave blank to use the default shown):
+ *   QueryParams     JSON object of static query params, e.g.
+ *                    {"siteKey":"...","culture":"en-us","order":"asc"}
+ *   PageParam        query param name for the page number. Default: "page"
+ *   ItemsPath        dot-path to the array of items in the response.
+ *                    Default: "data"
+ *   TotalPagesPath   dot-path to the total-page-count field. Default:
+ *                    "totalPages"
+ *   FieldMap         JSON object mapping our output columns to the source
+ *                    item's field names, e.g.
+ *                    {"name":"pageTitle","description":"pageDescription",
+ *                     "url":"pageUrl","source_id":"nodeId","logo":"pageLogoUrl",
+ *                     "image":"pageImageUrl","floor":"floors","category":"categories"}
+ *
+ * "ApiPath" (both providers) is the segment appended after SearchUrl, e.g.
+ * "shops" vs. "eateries" for Bluewater's two directories on the same site.
+ * One mall with several directories gets one row per directory, same
+ * SiteKey/BaseUrl, different MallName/ApiPath.
  */
 
 const CONFIG_SHEET_NAME = 'MallConfig';
@@ -48,9 +71,12 @@ function runScrapeForMall(mallId) {
   let shops;
   if (provider === 'landsec') {
     shops = fetchShops_landsec_(config);
+  } else if (provider === 'generic') {
+    shops = fetchShops_generic_(config);
   } else {
     throw new Error('No scraper implemented for provider "' + config.Provider + '". ' +
-      'Add a fetchShops_' + provider + '_() function and wire it into runScrapeForMall().');
+      'Use "generic" for any paginated JSON API (no code change needed), or ' +
+      'add a fetchShops_' + provider + '_() function and wire it into runScrapeForMall().');
   }
 
   const tabName = sheetTabNameFor_(config.MallName);
@@ -158,6 +184,76 @@ function normalizeLandsecShop_(shop, baseUrl) {
     floor: Array.isArray(shop.floors) ? shop.floors.join(', ') : (shop.floors || ''),
     category: Array.isArray(shop.categories) ? shop.categories.join(', ') : (shop.categories || '')
   };
+}
+
+/**
+ * Config-driven provider for any paginated JSON API. No code change needed
+ * for a new site as long as it's a GET endpoint that returns a JSON array of
+ * items plus a total-page count. See the header comment for column meanings.
+ */
+function fetchShops_generic_(config) {
+  const apiPath = String(config.ApiPath || '').replace(/^\/+/, '');
+  const baseSearchUrl = String(config.SearchUrl).replace(/\/+$/, '');
+  const endpoint = apiPath ? baseSearchUrl + '/' + apiPath : baseSearchUrl;
+
+  const pageParam = config.PageParam || 'page';
+  const itemsPath = config.ItemsPath || 'data';
+  const totalPagesPath = config.TotalPagesPath || 'totalPages';
+  const staticParams = config.QueryParams ? JSON.parse(config.QueryParams) : {};
+  const fieldMap = config.FieldMap ? JSON.parse(config.FieldMap) : {
+    name: 'pageTitle', description: 'pageDescription', url: 'pageUrl',
+    source_id: 'nodeId', logo: 'pageLogoUrl', image: 'pageImageUrl',
+    floor: 'floors', category: 'categories'
+  };
+
+  const shops = [];
+  let page = 1;
+  let totalPages = 1;
+
+  do {
+    const params = Object.assign({}, staticParams);
+    params[pageParam] = page;
+    const queryString = Object.keys(params)
+      .map(function (key) { return encodeURIComponent(key) + '=' + encodeURIComponent(params[key]); })
+      .join('&');
+
+    const response = UrlFetchApp.fetch(endpoint + '?' + queryString, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+      throw new Error('Request failed (' + response.getResponseCode() + ') for ' + config.MallName);
+    }
+
+    const data = JSON.parse(response.getContentText());
+    totalPages = Number(getPath_(data, totalPagesPath)) || 1;
+    const items = getPath_(data, itemsPath) || [];
+    items.forEach(function (item) {
+      shops.push(normalizeGeneric_(item, fieldMap, config.BaseUrl));
+    });
+
+    page += 1;
+    Utilities.sleep(300); // be polite to the API
+  } while (page <= totalPages);
+
+  return shops;
+}
+
+function normalizeGeneric_(item, fieldMap, baseUrl) {
+  const row = {};
+  COLUMNS.forEach(function (column) {
+    const sourceField = fieldMap[column];
+    let value = sourceField ? getPath_(item, sourceField) : '';
+    if (Array.isArray(value)) value = value.join(', ');
+    row[column] = value == null ? '' : value;
+  });
+  if (row.url && baseUrl && String(row.url).indexOf('http') !== 0) {
+    row.url = baseUrl.replace(/\/$/, '') + row.url;
+  }
+  return row;
+}
+
+function getPath_(obj, path) {
+  return String(path).split('.').reduce(function (acc, key) {
+    return acc == null ? undefined : acc[key];
+  }, obj);
 }
 
 // ---------------------------------------------------------------------------
