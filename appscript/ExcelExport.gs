@@ -25,6 +25,11 @@ function exportRowsAsXlsx_(mallName, columns, rows) {
     }
     sheet.autoResizeColumns(1, columns.length);
 
+    // Without this, the export below can grab a stale (pre-write) snapshot
+    // of the spreadsheet, producing a downloaded file with the header but
+    // no data rows.
+    SpreadsheetApp.flush();
+
     const url = 'https://docs.google.com/spreadsheets/d/' + tempFileId + '/export?format=xlsx';
     const response = UrlFetchApp.fetch(url, {
       headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
