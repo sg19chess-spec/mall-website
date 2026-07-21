@@ -4,30 +4,51 @@
   <base target="_top">
   <meta charset="utf-8">
   <style>
-    body { font-family: Arial, sans-serif; max-width: 480px; margin: 40px auto; color: #1a1a1a; }
+    body { font-family: Arial, sans-serif; max-width: 960px; margin: 40px auto; color: #1a1a1a; padding: 0 16px; }
     h1 { font-size: 18px; margin-bottom: 4px; }
     p.hint { color: #666; font-size: 13px; margin-top: 0; }
     input[type="text"] { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; margin-bottom: 8px; }
     select { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; margin-bottom: 12px; }
     button { padding: 10px 16px; font-size: 14px; cursor: pointer; background: #1a73e8; color: #fff; border: none; border-radius: 4px; }
     button:disabled { background: #999; cursor: default; }
+    button.secondary { background: #fff; color: #1a73e8; border: 1px solid #1a73e8; }
     #status { margin-top: 16px; font-size: 14px; }
     #status a { color: #1a73e8; }
     .error { color: #c5221f; }
+    #columnPicker { margin: 16px 0; padding: 12px; background: #f5f5f5; border-radius: 4px; display: none; }
+    #columnPicker label { display: inline-block; margin-right: 16px; font-size: 13px; white-space: nowrap; }
+    #tableWrap { display: none; margin-top: 16px; max-height: 480px; overflow: auto; border: 1px solid #ddd; }
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    th { background: #f0f0f0; position: sticky; top: 0; }
+    #actions { margin-top: 16px; display: none; }
   </style>
 </head>
 <body>
   <h1>Mall Shop Directory Downloader</h1>
-  <p class="hint">Search for a mall, select it, then run the download. Results are written to their own tab in this spreadsheet.</p>
+  <p class="hint">Search for a mall, select it, and load its directory. Then pick which columns you want and download them as Excel.</p>
 
   <input type="text" id="search" placeholder="Search malls by name...">
   <select id="mallSelect" size="6"></select>
-  <button id="runBtn" disabled>Download Shop Directory</button>
+  <button id="loadBtn" disabled>Load Directory</button>
 
   <div id="status"></div>
 
+  <div id="columnPicker"></div>
+  <div id="tableWrap">
+    <table>
+      <thead><tr id="tableHead"></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+  <div id="actions">
+    <button id="downloadBtn">Download Selected Columns as Excel</button>
+    <button class="secondary" id="openSheetBtn">Open Full Sheet</button>
+  </div>
+
   <script>
     let allMalls = [];
+    let loadedData = null; // { mallName, columns, rows, sheetUrl }
 
     function renderOptions(malls) {
       const select = document.getElementById('mallSelect');
@@ -46,32 +67,114 @@
     });
 
     document.getElementById('mallSelect').addEventListener('change', function () {
-      document.getElementById('runBtn').disabled = !this.value;
+      document.getElementById('loadBtn').disabled = !this.value;
     });
 
-    document.getElementById('runBtn').addEventListener('click', function () {
+    document.getElementById('loadBtn').addEventListener('click', function () {
       const select = document.getElementById('mallSelect');
       const mallId = select.value;
-      const mallName = select.options[select.selectedIndex].textContent;
       if (!mallId) return;
 
-      const btn = document.getElementById('runBtn');
+      const btn = document.getElementById('loadBtn');
       const status = document.getElementById('status');
       btn.disabled = true;
-      status.innerHTML = 'Running download for ' + mallName + '... this can take a minute.';
+      document.getElementById('columnPicker').style.display = 'none';
+      document.getElementById('tableWrap').style.display = 'none';
+      document.getElementById('actions').style.display = 'none';
+      status.innerHTML = 'Loading directory... this can take a minute.';
 
       google.script.run
         .withSuccessHandler(function (result) {
           btn.disabled = false;
-          downloadXlsx(result.xlsxBase64, result.fileName);
-          status.innerHTML = 'Done. ' + result.count + ' shops downloaded as ' + result.fileName +
-            '. <a href="' + result.sheetUrl + '" target="_blank">Open sheet</a>';
+          loadedData = result;
+          status.innerHTML = 'Loaded ' + result.count + ' entries for ' + result.mallName + '.';
+          renderColumnPicker(result.columns);
+          renderTable(result.columns, result.rows);
+          document.getElementById('actions').style.display = 'block';
         })
         .withFailureHandler(function (err) {
           btn.disabled = false;
           status.innerHTML = '<span class="error">Error: ' + err.message + '</span>';
         })
-        .runScrapeForMall(mallId);
+        .loadMallData(mallId);
+    });
+
+    function renderColumnPicker(columns) {
+      const picker = document.getElementById('columnPicker');
+      picker.innerHTML = '';
+      columns.forEach(function (col) {
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = col;
+        checkbox.checked = true;
+        checkbox.className = 'colCheck';
+        checkbox.addEventListener('change', function () { renderTable(loadedData.columns, loadedData.rows); });
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(' ' + col));
+        picker.appendChild(label);
+      });
+      picker.style.display = 'block';
+    }
+
+    function getSelectedColumns() {
+      return Array.from(document.querySelectorAll('.colCheck:checked')).map(function (c) { return c.value; });
+    }
+
+    function renderTable(allColumns, rows) {
+      const selected = getSelectedColumns();
+      const head = document.getElementById('tableHead');
+      const body = document.getElementById('tableBody');
+      head.innerHTML = '';
+      body.innerHTML = '';
+
+      selected.forEach(function (col) {
+        const th = document.createElement('th');
+        th.textContent = col;
+        head.appendChild(th);
+      });
+
+      rows.forEach(function (row) {
+        const tr = document.createElement('tr');
+        selected.forEach(function (col) {
+          const td = document.createElement('td');
+          td.textContent = row[col] || '';
+          td.title = row[col] || '';
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+
+      document.getElementById('tableWrap').style.display = 'block';
+    }
+
+    document.getElementById('downloadBtn').addEventListener('click', function () {
+      if (!loadedData) return;
+      const selected = getSelectedColumns();
+      if (selected.length === 0) {
+        document.getElementById('status').innerHTML = '<span class="error">Select at least one column.</span>';
+        return;
+      }
+
+      const btn = this;
+      btn.disabled = true;
+      document.getElementById('status').innerHTML = 'Building Excel file...';
+
+      google.script.run
+        .withSuccessHandler(function (result) {
+          btn.disabled = false;
+          downloadXlsx(result.base64, result.fileName);
+          document.getElementById('status').innerHTML = 'Downloaded ' + result.fileName + '.';
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          document.getElementById('status').innerHTML = '<span class="error">Error: ' + err.message + '</span>';
+        })
+        .exportRowsAsXlsx(loadedData.mallName, selected, loadedData.rows);
+    });
+
+    document.getElementById('openSheetBtn').addEventListener('click', function () {
+      if (loadedData) window.open(loadedData.sheetUrl, '_blank');
     });
 
     function downloadXlsx(base64, fileName) {

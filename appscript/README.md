@@ -8,9 +8,15 @@ shape we've already implemented (see "Providers" below).
 ## Setup
 
 1. Create a new Google Sheet.
-2. Extensions → Apps Script. Delete the default `Code.gs` content.
-3. Copy the contents of this folder into the Apps Script project:
-   - `Code.gs`
+2. Extensions → Apps Script. Delete the default `Code.gs` content and file
+   (this project uses several smaller files instead, see "Project files"
+   below).
+3. Copy the contents of this folder into the Apps Script project — one
+   Apps Script file per file here:
+   - `Main.gs`
+   - `Providers.gs`
+   - `SheetStore.gs`
+   - `ExcelExport.gs`
    - `Index.html`
    - `appsscript.json` (Project Settings → check "Show appsscript.json" first)
 
@@ -36,6 +42,12 @@ shape we've already implemented (see "Providers" below).
 5. Deploy → New deployment → type "Web app". Execute as "User accessing the
    web app", access "Anyone with the link" (or restrict to your org). Open
    the deployment URL — that's the search/select/run UI.
+
+**Already have a deployment from an earlier version?** Delete the old
+`Code.gs` file from the Apps Script project, add the four `.gs` files above
+instead, update `Index.html`, then **Deploy → Manage deployments → edit
+(pencil) your existing deployment → Version: "New version" → Deploy**. This
+updates the same URL in place — no need to redeploy from scratch.
 
 ## Adding another mall or directory — without touching Code.gs
 
@@ -70,20 +82,40 @@ Two ways to add a site now, neither requires opening the Apps Script editor:
 Only a site that **isn't** a plain paginated JSON GET API — needs a login,
 is pure server-rendered HTML with no API, paginates by cursor/token instead
 of page number, etc. — requires adding a `fetchShops_<provider>_()` function
-in `Code.gs`, returning the same normalized row shape (`name`, `description`,
-`url`, `source_id`, `logo`, `image`, `floor`, `category`), wired into the
-`if/else` in `runScrapeForMall()`.
+in `Providers.gs`, returning the same normalized row shape (`name`,
+`description`, `url`, `source_id`, `logo`, `image`, `floor`, `category`),
+wired into the `if/else` in `loadMallData()` (`Main.gs`).
+
+## Project files
+
+- **`Main.gs`** — web app entry point (`doGet`), `getMalls()` for the search
+  box, `loadMallData()` (scrape + write to a sheet tab), `exportRowsAsXlsx()`
+  (build the Excel file from whatever the user picked).
+- **`Providers.gs`** — one `fetchShops_<provider>_()` per API shape
+  (`landsec`, `generic`). This is the only file you'd touch to support a
+  site with a genuinely different API mechanic.
+- **`SheetStore.gs`** — reads `MallConfig`, defines the output `COLUMNS`,
+  writes scraped rows into a `Shops - <Mall Name>` tab (kept as a durable
+  copy/history separate from what gets exported).
+- **`ExcelExport.gs`** — turns an arbitrary set of rows/columns into a
+  downloadable `.xlsx`, returned as base64.
+- **`Index.html`** — the UI.
 
 ## What it does
 
-- `getMalls()` returns the `Enabled` rows from `MallConfig` for the UI's
-  search box.
-- `runScrapeForMall(mallId)` looks up that mall's config, paginates through
-  its shop search API (never hardcoding page count — it reads `totalPages`
-  from the response each time, same as `scripts/download_shops.py`), writes
-  the normalized rows into a sheet tab named `Shops - <Mall Name>`, then
-  exports that tab as a standalone `.xlsx` file and returns it to the browser
-  as base64. The page decodes it and triggers a normal file download.
+1. `getMalls()` returns the `Enabled` rows from `MallConfig` for the search
+   box.
+2. Selecting a mall and clicking **Load Directory** calls `loadMallData()`,
+   which paginates through that mall's API (never hardcoding page count —
+   it reads `totalPages` from the response each time, same as
+   `scripts/download_shops.py`), writes the full result into a `Shops - <Mall
+   Name>` sheet tab, and returns all rows + the column list to the browser.
+3. The page renders a **preview table of everything collected**, with a
+   checkbox per column above it (all checked by default). Unchecking a
+   column hides it from both the table and the export.
+4. **Download Selected Columns as Excel** sends just the checked columns
+   back to `exportRowsAsXlsx()`, which builds and returns a `.xlsx` — no
+   re-scraping, since the data's already in the browser from step 2.
 
 No local software is required on the user's end — everything (scraping,
 pagination, and the Excel export) runs inside Apps Script. A browser is
