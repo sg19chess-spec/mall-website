@@ -79,6 +79,23 @@ Two ways to add a site now, neither requires opening the Apps Script editor:
    and the `FieldMap` above produces identical results to the `landsec`
    preset — `landsec` just saves you from typing that out per row.
 
+   **Unpaginated APIs work too** — leave `PageParam`/`ItemsPath`/
+   `TotalPagesPath` blank and the loop just runs once, using the response
+   root as the item array if it's already a JSON array. Example: Bellevue
+   Collection (`bellevuecollection.com`) has no pagination at all — one
+   request to `https://bellevuecollection.com/wp-json/tbc/shopping-directory/retail`
+   returns all 158 tenants as a bare JSON array:
+   ```
+   MallName: Bellevue Collection - Retail
+   Provider: generic
+   SearchUrl: https://bellevuecollection.com/wp-json/tbc/shopping-directory
+   ApiPath: retail
+   BaseUrl: https://bellevuecollection.com
+   FieldMap: {"name":"title","description":"tmp_message","url":"link","source_id":"slug","logo":"image","image":"image","floor":"property_names","category":"category_names"}
+   ```
+   Swap `ApiPath` to `dining` (or `hotels`) for their other directories on
+   the same site.
+
 Only a site that **isn't** a plain paginated JSON GET API — needs a login,
 is pure server-rendered HTML with no API, paginates by cursor/token instead
 of page number, etc. — requires adding a `fetchShops_<provider>_()` function

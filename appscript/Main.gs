@@ -21,12 +21,14 @@
  *   - "landsec": preset for the Landsec API family (Bluewater, and any other
  *     Landsec mall/directory) — just fill SiteKey/SearchUrl/ApiPath/BaseUrl.
  *
- *   - "generic": works for ANY paginated JSON API, purely from config, with
- *     no code change — see Providers.gs. Use this for a new site whose API
- *     isn't Landsec's, as long as it's a JSON GET endpoint that takes a page
- *     number and reports how many pages exist.
+ *   - "generic": works for ANY JSON GET API, purely from config, with no
+ *     code change — see Providers.gs. Covers both paginated APIs (a page
+ *     number + a total-page count, like Bluewater/Landsec) and unpaginated
+ *     ones that return everything in one response (like Bellevue
+ *     Collection's shopping-directory endpoints) — leave the pagination
+ *     columns blank for the latter.
  *
- * Only a site that *isn't* a plain paginated JSON API (needs a login, is
+ * Only a site that *isn't* a plain JSON GET API (needs a login, is
  * server-rendered HTML with no API, uses GraphQL, etc.) requires touching
  * Providers.gs at all — add a new fetchShops_<provider>_() function there.
  *

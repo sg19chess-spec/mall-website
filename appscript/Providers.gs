@@ -63,10 +63,15 @@ function normalizeLandsecShop_(shop, baseUrl) {
 }
 
 /**
- * Config-driven provider for any paginated JSON API. No code change needed
- * for a new site as long as it's a GET endpoint that returns a JSON array of
- * items plus a total-page count. See Main.gs header comment for column
- * meanings (QueryParams, PageParam, ItemsPath, TotalPagesPath, FieldMap).
+ * Config-driven provider for any JSON GET API, paginated or not. No code
+ * change needed for a new site as long as it returns a JSON array of items
+ * (either at the response root, or nested under ItemsPath) and, if
+ * paginated, reports a total-page count. See Main.gs header comment for
+ * column meanings (QueryParams, PageParam, ItemsPath, TotalPagesPath,
+ * FieldMap). Leave ItemsPath/TotalPagesPath/PageParam blank for an
+ * unpaginated API that just returns the full array in one response (e.g.
+ * Bellevue Collection's shopping-directory endpoints) — the loop still
+ * works, it just runs once.
  */
 function fetchShops_generic_(config) {
   const apiPath = String(config.ApiPath || '').replace(/^\/+/, '');
@@ -101,7 +106,11 @@ function fetchShops_generic_(config) {
 
     const data = JSON.parse(response.getContentText());
     totalPages = Number(getPath_(data, totalPagesPath)) || 1;
-    const items = getPath_(data, itemsPath) || [];
+    // Nested items if ItemsPath resolves to an array; otherwise fall back to
+    // the response root itself being the array (unpaginated APIs like
+    // Bellevue Collection's).
+    const nested = getPath_(data, itemsPath);
+    const items = Array.isArray(nested) ? nested : (Array.isArray(data) ? data : []);
     items.forEach(function (item) {
       shops.push(normalizeGeneric_(item, fieldMap, config.BaseUrl));
     });
