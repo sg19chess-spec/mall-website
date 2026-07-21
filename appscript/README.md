@@ -21,22 +21,29 @@ shape we've already implemented (see "Providers" below).
    clasp push
    ```
 4. Back in the Sheet, add a tab named exactly `MallConfig` with this header
-   row and one row per mall:
+   row and one row per mall directory:
 
-   | MallId | MallName  | Provider | SiteKey                              | Culture | SearchUrl                                 | BaseUrl                     | Enabled |
-   |--------|-----------|----------|---------------------------------------|---------|--------------------------------------------|------------------------------|---------|
-   | 1      | Bluewater | landsec  | 446cfce2-1e0b-466a-8c80-862385517399 | en-us   | https://content.landsec.com/search/shops   | https://www.bluewater.co.uk | TRUE    |
+   | MallId | MallName | Provider | SiteKey | Culture | SearchUrl | ApiPath | BaseUrl | Enabled |
+   |---|---|---|---|---|---|---|---|---|
+   | 1 | Bluewater | landsec | 446cfce2-1e0b-466a-8c80-862385517399 | en-us | https://content.landsec.com/search | shops | https://www.bluewater.co.uk | TRUE |
+   | 2 | Bluewater - Eat & Drink | landsec | 446cfce2-1e0b-466a-8c80-862385517399 | en-us | https://content.landsec.com/search | eateries | https://www.bluewater.co.uk | TRUE |
+
+   `SearchUrl` is the base URL (no endpoint suffix); `ApiPath` picks the
+   directory on that same site — `shops` for retail, `eateries` for
+   restaurants/cafes/bars. Same site, same `SiteKey`, one row per directory.
 
 5. Deploy → New deployment → type "Web app". Execute as "User accessing the
    web app", access "Anyone with the link" (or restrict to your org). Open
    the deployment URL — that's the search/select/run UI.
 
-## Adding another mall
+## Adding another mall or directory
 
-- **Same API shape (e.g. another Landsec mall):** just add a new row to
-  `MallConfig` with its own `SiteKey`, `SearchUrl`, and `BaseUrl`, `Provider`
-  still `landsec`. No code change needed.
-- **Different API shape:** add a new `fetchShops_<provider>_()` function in
+- **Same API family (e.g. another Landsec mall, or another directory on a
+  mall already configured — shops vs. eateries vs. whatever else the site
+  exposes under `/search/<path>`):** just add a new row to `MallConfig` with
+  the right `SiteKey`, `ApiPath`, and `BaseUrl`, `Provider` still `landsec`.
+  No code change needed. (Confirmed so far: `shops`, `eateries`.)
+- **Different API shape entirely:** add a new `fetchShops_<provider>_()` function in
   `Code.gs` that returns the same normalized row shape (`name`, `description`,
   `url`, `source_id`, `logo`, `image`, `floor`, `category`), wire it into the
   `if/else` in `runScrapeForMall()`, then add config rows using that

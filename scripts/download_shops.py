@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Download the full Bluewater shop directory and save it as an Excel file.
+"""Download a Bluewater directory (shops, or eat & drink) as an Excel file.
 
 Usage:
-    python scripts/download_shops.py [output.xlsx]
+    python scripts/download_shops.py [output.xlsx] [api_path]
 
-Data source: see docs/bluewater-anatomy.md for how this API was discovered.
+    api_path defaults to "shops" (retail directory). Pass "eateries" for the
+    restaurants/cafes/bars directory - same API shape, different content type.
+
+Data source: see docs/bluewater-anatomy.md for how these APIs were discovered.
 """
 import sys
 import time
@@ -13,7 +16,7 @@ import pandas as pd
 import requests
 
 SITE_KEY = "446cfce2-1e0b-466a-8c80-862385517399"
-SEARCH_URL = "https://content.landsec.com/search/shops"
+SEARCH_BASE_URL = "https://content.landsec.com/search"
 BASE_SITE_URL = "https://www.bluewater.co.uk"
 
 FIELD_MAP = {
@@ -28,7 +31,7 @@ FIELD_MAP = {
 }
 
 
-def fetch_page(page: int) -> dict:
+def fetch_page(api_path: str, page: int) -> dict:
     params = {
         "siteKey": SITE_KEY,
         "culture": "en-us",
@@ -38,7 +41,7 @@ def fetch_page(page: int) -> dict:
         "tags": "",
         "filters": "",
     }
-    resp = requests.get(SEARCH_URL, params=params, timeout=30)
+    resp = requests.get(f"{SEARCH_BASE_URL}/{api_path}", params=params, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
@@ -55,13 +58,13 @@ def normalize(shop: dict) -> dict:
     return row
 
 
-def fetch_all_shops() -> list[dict]:
-    first = fetch_page(1)
+def fetch_all_shops(api_path: str) -> list[dict]:
+    first = fetch_page(api_path, 1)
     total_pages = first.get("totalPages", 1)
     shops = list(first.get("data", []))
 
     for page in range(2, total_pages + 1):
-        data = fetch_page(page)
+        data = fetch_page(api_path, page)
         shops.extend(data.get("data", []))
         time.sleep(0.3)  # be polite to the API
 
@@ -70,10 +73,11 @@ def fetch_all_shops() -> list[dict]:
 
 def main():
     output_path = sys.argv[1] if len(sys.argv) > 1 else "bluewater_shops.xlsx"
+    api_path = sys.argv[2] if len(sys.argv) > 2 else "shops"
 
-    print("Fetching shop directory...")
-    shops = fetch_all_shops()
-    print(f"Fetched {len(shops)} shops")
+    print(f"Fetching '{api_path}' directory...")
+    shops = fetch_all_shops(api_path)
+    print(f"Fetched {len(shops)} entries")
 
     rows = [normalize(shop) for shop in shops]
     columns = list(FIELD_MAP.values())

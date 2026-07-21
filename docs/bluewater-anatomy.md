@@ -125,6 +125,74 @@ Services
 
 ---
 
+## 2b. Eat & Drink directory (separate endpoint, same shape)
+
+```
+https://www.bluewater.co.uk/en/eat-listing
+```
+
+Restaurants/cafes/bars are **not** included in `/search/shops` — they live
+under a sibling endpoint, same host, same `siteKey`, same response shape:
+
+```
+GET
+https://content.landsec.com/search/eateries?siteKey=446cfce2-1e0b-466a-8c80-862385517399&culture=en-us&page=1&order=asc&search=&tags=&filters=
+```
+
+```json
+{
+"data":[
+ {
+  "pageTitle":"Ask Italian",
+  "pageDescription":"...",
+  "nodeId":"d2803da9-0b37-423d-bb73-94b5309fa6fe",
+  "pageUrl":"/bluewater/en/eat-listing/ask-italian/",
+  "pageLogoUrl":"/media/umjnhorp/askitalian.jpg",
+  "pageImageUrl":"/media/xjkjj0wz/ask-italian.jpg"
+ }
+],
+"documentsCount":54,
+"totalPages":5,
+"currentPage":1
+}
+```
+
+Same pagination rule applies: read `totalPages`, never hardcode it (54 shops
+across 5 pages at time of writing).
+
+There's also a category-tag filter endpoint for this directory:
+
+```
+GET
+https://content.landsec.com/content/filters/en-us/446cfce2-1e0b-466a-8c80-862385517399/eatListingPage
+```
+
+which returns a top-level content-type filter, not just food categories:
+
+```json
+{
+ "productGroupings":[
+  {"groupName":"Store Categories","categories":[
+    {"categoryName":"Shops","categoryId":"shopPage"},
+    {"categoryName":"Dine & Drink","categoryId":"eateryPage"},
+    {"categoryName":"Play","categoryId":"attractionDetailPage"}
+  ]},
+  {"groupName":"What's on","categories":[
+    {"categoryName":"Offers","categoryId":"offerDetailPage"},
+    {"categoryName":"Events","categoryId":"eventDetailPage"},
+    {"categoryName":"Article","categoryId":"articlesDetailPage"},
+    {"categoryName":"News","categoryId":"newsDetailPage"}
+  ]}
+ ]
+}
+```
+
+This hints the site likely also has an `attractionDetailPage` ("Play")
+listing under its own `/search/<path>` — not yet confirmed, worth checking
+the same way if we need attractions/activities too.
+
+---
+
 ## 3. Main shop search API
 
 This is the important one.

@@ -6,11 +6,18 @@
  * mall #N is a new config row, not new code — see README.md in this folder.
  *
  * MallConfig columns (row 1 = header):
- *   MallId | MallName | Provider | SiteKey | Culture | SearchUrl | BaseUrl | Enabled
+ *   MallId | MallName | Provider | SiteKey | Culture | SearchUrl | ApiPath | BaseUrl | Enabled
  *
  * "Provider" selects which fetch function below understands that site's API
  * shape. Today only "landsec" (the API documented in docs/bluewater-anatomy.md,
  * shared by Landsec-operated malls like Bluewater) is implemented.
+ *
+ * "ApiPath" is the segment after SearchUrl, e.g. "shops" for the shop
+ * directory or "eateries" for the eat/dine directory — same landsec provider,
+ * same JSON shape, just a different content type. Leave blank to default to
+ * "shops". One mall with both a shop and an eat directory gets two rows,
+ * same SiteKey, different MallName/ApiPath (e.g. "Bluewater" + "Bluewater -
+ * Eat & Drink").
  */
 
 const CONFIG_SHEET_NAME = 'MallConfig';
@@ -103,9 +110,11 @@ function fetchShops_landsec_(config) {
   const shops = [];
   let page = 1;
   let totalPages = 1;
+  const apiPath = String(config.ApiPath || 'shops').replace(/^\/+/, '');
+  const baseSearchUrl = String(config.SearchUrl).replace(/\/+$/, '');
 
   do {
-    const url = config.SearchUrl + '?' + [
+    const url = baseSearchUrl + '/' + apiPath + '?' + [
       'siteKey=' + encodeURIComponent(config.SiteKey),
       'culture=' + encodeURIComponent(config.Culture || 'en-us'),
       'page=' + page,
