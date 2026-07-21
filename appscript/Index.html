@@ -63,8 +63,9 @@
       google.script.run
         .withSuccessHandler(function (result) {
           btn.disabled = false;
-          status.innerHTML = 'Done. ' + result.count + ' shops saved to tab "' + result.tabName +
-            '". <a href="' + result.sheetUrl + '" target="_blank">Open sheet</a>';
+          downloadXlsx(result.xlsxBase64, result.fileName);
+          status.innerHTML = 'Done. ' + result.count + ' shops downloaded as ' + result.fileName +
+            '. <a href="' + result.sheetUrl + '" target="_blank">Open sheet</a>';
         })
         .withFailureHandler(function (err) {
           btn.disabled = false;
@@ -72,6 +73,21 @@
         })
         .runScrapeForMall(mallId);
     });
+
+    function downloadXlsx(base64, fileName) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
 
     google.script.run
       .withSuccessHandler(function (malls) {

@@ -47,15 +47,48 @@ function runScrapeForMall(mallId) {
   }
 
   const tabName = sheetTabNameFor_(config.MallName);
-  writeShopsToSheet_(tabName, shops);
+  const sheet = writeShopsToSheet_(tabName, shops);
+  const xlsx = exportSheetAsXlsx_(sheet, config.MallName);
 
   return {
     mallName: config.MallName,
     count: shops.length,
     tabName: tabName,
-    sheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl() + '#gid=' +
-      SpreadsheetApp.getActiveSpreadsheet().getSheetByName(tabName).getSheetId()
+    sheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl() + '#gid=' + sheet.getSheetId(),
+    xlsxBase64: xlsx.base64,
+    fileName: xlsx.fileName
   };
+}
+
+/**
+ * Exports a single sheet tab as a standalone .xlsx file, returned as base64
+ * so the browser can download it directly — no local software needed on the
+ * user's machine, not even a spreadsheet app.
+ */
+function exportSheetAsXlsx_(sheet, mallName) {
+  const tempSpreadsheet = SpreadsheetApp.create('tmp-export-' + sheet.getSheetId());
+  const tempFileId = tempSpreadsheet.getId();
+  try {
+    sheet.copyTo(tempSpreadsheet).setName(sheet.getName());
+    tempSpreadsheet.deleteSheet(tempSpreadsheet.getSheets()[0]); // remove the blank default sheet
+
+    const url = 'https://docs.google.com/spreadsheets/d/' + tempFileId + '/export?format=xlsx';
+    const response = UrlFetchApp.fetch(url, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
+    });
+    const blob = response.getBlob();
+
+    return {
+      base64: Utilities.base64Encode(blob.getBytes()),
+      fileName: sanitizeFileName_(mallName) + '.xlsx'
+    };
+  } finally {
+    DriveApp.getFileById(tempFileId).setTrashed(true);
+  }
+}
+
+function sanitizeFileName_(name) {
+  return String(name).replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -162,4 +195,5 @@ function writeShopsToSheet_(tabName, rows) {
     sheet.getRange(2, 1, body.length, header.length).setValues(body);
   }
   sheet.autoResizeColumns(1, header.length);
+  return sheet;
 }

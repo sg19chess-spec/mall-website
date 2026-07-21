@@ -48,8 +48,19 @@ shape we've already implemented (see "Providers" below).
   search box.
 - `runScrapeForMall(mallId)` looks up that mall's config, paginates through
   its shop search API (never hardcoding page count — it reads `totalPages`
-  from the response each time, same as `scripts/download_shops.py`), and
-  writes the normalized rows into a sheet tab named `Shops - <Mall Name>`.
-- To get an actual `.xlsx` file out, use the Sheet's own
-  File → Download → Microsoft Excel, or fetch it via the Sheets export URL
-  (`.../export?format=xlsx`) if you want that scripted too.
+  from the response each time, same as `scripts/download_shops.py`), writes
+  the normalized rows into a sheet tab named `Shops - <Mall Name>`, then
+  exports that tab as a standalone `.xlsx` file and returns it to the browser
+  as base64. The page decodes it and triggers a normal file download.
+
+No local software is required on the user's end — everything (scraping,
+pagination, and the Excel export) runs inside Apps Script. A browser is
+enough; nothing needs to be installed, not Python, not Excel, nothing.
+
+## Permissions note
+
+Exporting to `.xlsx` needs Drive access (a temporary spreadsheet is created,
+exported, then deleted) in addition to Sheets access, so `appsscript.json`
+now requests the `spreadsheets`, `drive`, and `script.external_request`
+scopes. The first time each user runs it, Google will show a one-time
+consent screen for those scopes.
